@@ -1,0 +1,28 @@
+import AppShell from '@/components/AppShell';
+import ServerList from '@/components/ServerList';
+import { Box, Typography, Button } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
+import Link from 'next/link';
+
+export default function ServersPage() {
+  return (
+    <AppShell>
+      <Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+            Servers
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            component={Link}
+            href="/servers/new"
+          >
+            Create Server
+          </Button>
+        </Box>
+        <ServerList />
+      </Box>
+    </AppShell>
+  );
+}
