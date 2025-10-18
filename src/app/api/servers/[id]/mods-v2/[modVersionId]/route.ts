@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database/config';
 import { ServerMod } from '@/lib/database/entities';
+import dockerService from '@/lib/services/docker.service';
 
 export async function PATCH(
   request: NextRequest,
@@ -44,6 +45,21 @@ export async function PATCH(
 
     serverMod.enabled = enabled;
     await serverModRepo.save(serverMod);
+
+    // Sync mod files to the server
+    try {
+      const allServerMods = await serverModRepo.find({
+        where: { serverId, enabled: true },
+        relations: ['modVersion', 'modVersion.project'],
+      });
+
+      const enabledModVersions = allServerMods.map(sm => sm.modVersion);
+      await dockerService.syncModsForServer(serverId, enabledModVersions);
+      console.log('Mods synced successfully after toggle');
+    } catch (syncError) {
+      console.error('Error syncing mods:', syncError);
+      // Don't fail the request if sync fails, just log it
+    }
 
     return NextResponse.json({
       success: true,
@@ -89,6 +105,21 @@ export async function DELETE(
     }
 
     await serverModRepo.remove(serverMod);
+
+    // Sync mod files to the server (remove deleted mod)
+    try {
+      const allServerMods = await serverModRepo.find({
+        where: { serverId, enabled: true },
+        relations: ['modVersion', 'modVersion.project'],
+      });
+
+      const enabledModVersions = allServerMods.map(sm => sm.modVersion);
+      await dockerService.syncModsForServer(serverId, enabledModVersions);
+      console.log('Mods synced successfully after deletion');
+    } catch (syncError) {
+      console.error('Error syncing mods:', syncError);
+      // Don't fail the request if sync fails, just log it
+    }
 
     return NextResponse.json({
       success: true,

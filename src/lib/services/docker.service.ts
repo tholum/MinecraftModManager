@@ -60,6 +60,9 @@ export class DockerService {
     // Determine the Docker image based on mod loader
     const image = this.getDockerImage(server.modLoader);
 
+    // Pull the image if it doesn't exist locally
+    await this.pullImage(image);
+
     // Create container configuration
     const containerConfig: Docker.ContainerCreateOptions = {
       name: containerName,
@@ -165,6 +168,57 @@ export class DockerService {
     } catch (error) {
       console.error('Error deleting container:', error);
       throw new Error(`Failed to delete container: ${error}`);
+    }
+  }
+
+  async pullImage(imageName: string): Promise<void> {
+    try {
+      console.log(`Checking if image ${imageName} exists locally...`);
+
+      // Check if image already exists
+      const images = await docker.listImages();
+      const imageExists = images.some(img =>
+        img.RepoTags && img.RepoTags.includes(imageName)
+      );
+
+      if (imageExists) {
+        console.log(`Image ${imageName} already exists locally`);
+        return;
+      }
+
+      console.log(`Pulling Docker image: ${imageName}...`);
+
+      return new Promise<void>((resolve, reject) => {
+        docker.pull(imageName, (err: any, stream: any) => {
+          if (err) {
+            console.error('Error pulling image:', err);
+            reject(new Error(`Failed to pull image ${imageName}: ${err.message}`));
+            return;
+          }
+
+          docker.modem.followProgress(
+            stream,
+            (err: any, output: any) => {
+              if (err) {
+                console.error('Error during image pull:', err);
+                reject(new Error(`Failed to pull image ${imageName}: ${err.message}`));
+              } else {
+                console.log(`Successfully pulled image: ${imageName}`);
+                resolve();
+              }
+            },
+            (event: any) => {
+              // Progress callback - you can log progress here if needed
+              if (event.status) {
+                console.log(`${event.status}${event.progress ? ': ' + event.progress : ''}`);
+              }
+            }
+          );
+        });
+      });
+    } catch (error) {
+      console.error('Error in pullImage:', error);
+      throw new Error(`Failed to pull image ${imageName}: ${error}`);
     }
   }
 
@@ -293,6 +347,78 @@ export class DockerService {
     } catch (error) {
       console.error('Error syncing mods folder:', error);
       throw new Error(`Failed to sync mods folder: ${error}`);
+    }
+  }
+
+  async syncModsForServer(serverId: number, modVersions: any[]): Promise<void> {
+    const volumePath = path.join(process.cwd(), 'minecraft-data', `server-${serverId}`, 'mods');
+    const modsLibraryPath = path.join(process.cwd(), 'minecraft-data', 'mods-library');
+
+    try {
+      // Ensure directories exist
+      await fs.mkdir(volumePath, { recursive: true });
+      await fs.mkdir(modsLibraryPath, { recursive: true });
+
+      console.log(`Syncing ${modVersions.length} mods for server ${serverId}...`);
+
+      // Get current mods in server folder
+      const currentMods = await fs.readdir(volumePath);
+      const expectedFiles = modVersions.map(mv => mv.fileName);
+
+      // Remove mods that shouldn't be there
+      for (const mod of currentMods) {
+        if (!expectedFiles.includes(mod) && mod.endsWith('.jar')) {
+          console.log(`Removing mod: ${mod}`);
+          await fs.unlink(path.join(volumePath, mod));
+        }
+      }
+
+      // Download and copy mods
+      for (const modVersion of modVersions) {
+        const fileName = modVersion.fileName;
+        const libraryPath = path.join(modsLibraryPath, fileName);
+        const serverPath = path.join(volumePath, fileName);
+
+        try {
+          // Check if file exists in library
+          let fileExists = false;
+          try {
+            await fs.access(libraryPath);
+            fileExists = true;
+          } catch {
+            fileExists = false;
+          }
+
+          // Download if not in library and has download URL
+          if (!fileExists && modVersion.downloadUrl) {
+            console.log(`Downloading ${modVersion.project?.name || fileName} to library...`);
+            const response = await fetch(modVersion.downloadUrl);
+            if (!response.ok || !response.body) {
+              throw new Error(`Failed to download: ${response.statusText}`);
+            }
+
+            const buffer = Buffer.from(await response.arrayBuffer());
+            await fs.writeFile(libraryPath, buffer);
+            console.log(`✓ Downloaded ${fileName}`);
+          }
+
+          // Copy to server folder if exists in library
+          try {
+            await fs.access(libraryPath);
+            await fs.copyFile(libraryPath, serverPath);
+            console.log(`✓ Synced ${fileName} to server`);
+          } catch (error) {
+            console.error(`Failed to sync ${fileName}:`, error);
+          }
+        } catch (error) {
+          console.error(`Error processing mod ${fileName}:`, error);
+        }
+      }
+
+      console.log(`Mod sync complete for server ${serverId}`);
+    } catch (error) {
+      console.error('Error syncing mods for server:', error);
+      throw new Error(`Failed to sync mods: ${error}`);
     }
   }
 }

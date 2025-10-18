@@ -82,6 +82,8 @@ export default function ServerModsV2({ serverId, serverMinecraftVersion, serverM
   const [error, setError] = useState<string | null>(null);
   const [checkingDeps, setCheckingDeps] = useState(false);
   const [depInfo, setDepInfo] = useState<string | null>(null);
+  const [syncingMods, setSyncingMods] = useState(false);
+  const [syncInfo, setSyncInfo] = useState<string | null>(null);
 
   useEffect(() => {
     fetchServerMods();
@@ -229,6 +231,31 @@ export default function ServerModsV2({ serverId, serverMinecraftVersion, serverM
     }
   };
 
+  const handleSyncMods = async () => {
+    try {
+      setSyncingMods(true);
+      setSyncInfo(null);
+      setError(null);
+
+      const response = await fetch(`/api/servers/${serverId}/sync-mods`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSyncInfo(data.message);
+      } else {
+        throw new Error(data.error || 'Failed to sync mods');
+      }
+    } catch (err: any) {
+      console.error('Error syncing mods:', err);
+      setError(err.message);
+    } finally {
+      setSyncingMods(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -255,6 +282,15 @@ export default function ServerModsV2({ serverId, serverMinecraftVersion, serverM
               Sync Dependencies
             </Button>
             <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={syncingMods ? <CircularProgress size={20} /> : <SyncIcon />}
+              onClick={handleSyncMods}
+              disabled={serverModLoader === 'vanilla' || syncingMods || serverMods.length === 0}
+            >
+              Sync Mods
+            </Button>
+            <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => setDialogOpen(true)}
@@ -274,6 +310,12 @@ export default function ServerModsV2({ serverId, serverMinecraftVersion, serverM
         {depInfo && (
           <Alert severity="success" sx={{ mb: 2 }} onClose={() => setDepInfo(null)}>
             {depInfo}
+          </Alert>
+        )}
+
+        {syncInfo && (
+          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSyncInfo(null)}>
+            {syncInfo}
           </Alert>
         )}
 

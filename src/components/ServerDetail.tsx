@@ -17,6 +17,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
@@ -29,6 +31,7 @@ import {
   Download as DownloadIcon,
   Upload as UploadIcon,
   CloudDownload as ExportIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import ServerModsV2 from './ServerModsV2';
@@ -76,6 +79,8 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,6 +176,32 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
 
   const handleDownloadModpack = () => {
     window.open(`/api/servers/${serverId}/modpack`, '_blank');
+  };
+
+  const handleSyncProperties = async () => {
+    try {
+      setSyncing(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const response = await fetch(`/api/servers/${serverId}/sync-properties`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync server properties');
+      }
+
+      setSuccessMessage(`Properties synced successfully! Updated seed: ${data.updates.seed}`);
+      await fetchServer();
+    } catch (error: any) {
+      console.error('Error syncing properties:', error);
+      setError(error.message);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handleExportWorld = async () => {
@@ -375,6 +406,20 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
         </Box>
       </Box>
 
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+          <Tab label="Overview" />
+          <Tab label="Mods" />
+          {server.status === 'running' && <Tab label="Console" />}
+          <Tab label="Logs" />
+          <Tab label="Settings" />
+        </Tabs>
+      </Box>
+
+      {/* Tab Panel: Overview */}
+      {tabValue === 0 && (
+      <>
       {/* Control Buttons */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -426,9 +471,22 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 3, mb: 3 }}>
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Server Information
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">
+                Server Information
+              </Typography>
+              {server.status === 'running' && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
+                  onClick={handleSyncProperties}
+                  disabled={syncing}
+                >
+                  {syncing ? 'Syncing...' : 'Sync from Server'}
+                </Button>
+              )}
+            </Box>
             <Divider sx={{ my: 2 }} />
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Box>
@@ -624,24 +682,25 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
           </Box>
         </AccordionDetails>
       </Accordion>
+      </>
+      )}
 
-      {/* Server Mods */}
-      <Box sx={{ mb: 3 }}>
+      {/* Tab Panel: Mods */}
+      {tabValue === 1 && (
         <ServerModsV2
           serverId={serverId}
           serverMinecraftVersion={server.minecraftVersion}
           serverModLoader={server.modLoader}
         />
-      </Box>
-
-      {/* Server Console */}
-      {server.status === 'running' && (
-        <Box sx={{ mb: 3 }}>
-          <ServerConsole serverId={serverId} />
-        </Box>
       )}
 
-      {/* Server Logs */}
+      {/* Tab Panel: Console (only when server is running) */}
+      {server.status === 'running' && tabValue === 2 && (
+        <ServerConsole serverId={serverId} />
+      )}
+
+      {/* Tab Panel: Logs */}
+      {tabValue === (server.status === 'running' ? 3 : 2) && (
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -668,6 +727,119 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
           </Paper>
         </CardContent>
       </Card>
+      )}
+
+      {/* Tab Panel: Settings */}
+      {tabValue === (server.status === 'running' ? 4 : 3) && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              All Server Settings
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 3 }}>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Difficulty
+                </Typography>
+                <Chip label={server.settings?.difficulty || 'normal'} size="small" sx={{ textTransform: 'capitalize' }} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Game Mode
+                </Typography>
+                <Chip label={server.settings?.gamemode || 'survival'} size="small" sx={{ textTransform: 'capitalize' }} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Max Players
+                </Typography>
+                <Typography variant="body2">{server.settings?.maxPlayers || 20}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  PvP
+                </Typography>
+                <Chip label={server.settings?.pvp !== false ? 'Enabled' : 'Disabled'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  View Distance
+                </Typography>
+                <Typography variant="body2">{server.settings?.viewDistance || 10} chunks</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Allow Nether
+                </Typography>
+                <Chip label={server.settings?.allowNether !== false ? 'Yes' : 'No'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Allow Flight
+                </Typography>
+                <Chip label={server.settings?.allowFlight ? 'Yes' : 'No'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Spawn Monsters
+                </Typography>
+                <Chip label={server.settings?.spawnMonsters !== false ? 'Yes' : 'No'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Spawn Animals
+                </Typography>
+                <Chip label={server.settings?.spawnAnimals !== false ? 'Yes' : 'No'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Spawn NPCs
+                </Typography>
+                <Chip label={server.settings?.spawnNpcs !== false ? 'Yes' : 'No'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Whitelist
+                </Typography>
+                <Chip label={server.settings?.whitelist ? 'Enabled' : 'Disabled'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Command Blocks
+                </Typography>
+                <Chip label={server.settings?.enableCommandBlock ? 'Enabled' : 'Disabled'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Simulation Distance
+                </Typography>
+                <Typography variant="body2">{server.settings?.simulationDistance || 10} chunks</Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Level Type
+                </Typography>
+                <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                  {server.settings?.levelType || 'default'}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  Online Mode
+                </Typography>
+                <Chip label={server.settings?.onlineMode !== false ? 'Enabled' : 'Disabled'} size="small" />
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                  MOTD (Message of the Day)
+                </Typography>
+                <Typography variant="body2">{server.settings?.motd || 'A Minecraft Server'}</Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      )}
     </Box>
   );
 }

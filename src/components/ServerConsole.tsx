@@ -10,9 +10,12 @@ import {
   IconButton,
   Paper,
   Alert,
+  Button,
+  CircularProgress,
 } from '@mui/material';
 import {
   Send as SendIcon,
+  Build as BuildIcon,
 } from '@mui/icons-material';
 
 interface ConsoleMessage {
@@ -29,6 +32,7 @@ export default function ServerConsole({ serverId }: ServerConsoleProps) {
   const [command, setCommand] = useState('');
   const [messages, setMessages] = useState<ConsoleMessage[]>([]);
   const [executing, setExecuting] = useState(false);
+  const [fixing, setFixing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -88,6 +92,49 @@ export default function ServerConsole({ serverId }: ServerConsoleProps) {
     }
   };
 
+  const handleFixConsole = async () => {
+    if (!confirm('This will enable RCON and restart the server. Continue?')) {
+      return;
+    }
+
+    setFixing(true);
+    setMessages(prev => [...prev, {
+      type: 'output',
+      text: 'Starting console fix... This will restart the server.',
+      timestamp: new Date(),
+    }]);
+
+    try {
+      const response = await fetch(`/api/servers/${serverId}/fix-console`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessages(prev => [...prev, {
+          type: 'output',
+          text: `Console fixed successfully!\n${data.steps.join('\n')}`,
+          timestamp: new Date(),
+        }]);
+      } else {
+        setMessages(prev => [...prev, {
+          type: 'error',
+          text: `Failed to fix console: ${data.error}`,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (error: any) {
+      setMessages(prev => [...prev, {
+        type: 'error',
+        text: `Error: ${error.message}`,
+        timestamp: new Date(),
+      }]);
+    } finally {
+      setFixing(false);
+    }
+  };
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', {
       hour12: false,
@@ -113,13 +160,27 @@ export default function ServerConsole({ serverId }: ServerConsoleProps) {
   return (
     <Card>
       <CardContent>
-        <Typography variant="h6" sx={{ mb: 2 }}>
-          Server Console
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">
+            Server Console
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={fixing ? <CircularProgress size={16} /> : <BuildIcon />}
+            onClick={handleFixConsole}
+            disabled={fixing}
+            color="warning"
+          >
+            {fixing ? 'Fixing...' : 'Fix Console'}
+          </Button>
+        </Box>
 
         {messages.length === 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
             Enter commands to execute on the server. Examples: <code>gamerule keepInventory true</code>, <code>op Username</code>
+            <br />
+            <strong>Not working?</strong> Click "Fix Console" to enable RCON (requires server restart).
           </Alert>
         )}
 

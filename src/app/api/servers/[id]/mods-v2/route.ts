@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database/config';
 import { ServerMod, ModVersion, ModProject, Server } from '@/lib/database/entities';
 import modDependencyService from '@/lib/services/mod-dependency.service';
+import dockerService from '@/lib/services/docker.service';
 
 export async function GET(
   request: NextRequest,
@@ -144,6 +145,21 @@ export async function POST(
       where: { id: serverMod.id },
       relations: ['modVersion', 'modVersion.project'],
     });
+
+    // Sync mod files to the server
+    try {
+      const allServerMods = await serverModRepo.find({
+        where: { serverId, enabled: true },
+        relations: ['modVersion', 'modVersion.project'],
+      });
+
+      const enabledModVersions = allServerMods.map(sm => sm.modVersion);
+      await dockerService.syncModsForServer(serverId, enabledModVersions);
+      console.log('Mods synced successfully');
+    } catch (syncError) {
+      console.error('Error syncing mods:', syncError);
+      // Don't fail the request if sync fails, just log it
+    }
 
     return NextResponse.json({
       success: true,

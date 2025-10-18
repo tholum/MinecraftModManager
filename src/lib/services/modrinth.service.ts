@@ -210,6 +210,38 @@ export class ModrinthService {
       throw new Error('Failed to download mod file');
     }
   }
+
+  /**
+   * Look up version by file hash (SHA1 or SHA512)
+   */
+  async getVersionByHash(hash: string, algorithm: 'sha1' | 'sha512' = 'sha1'): Promise<ModrinthVersion | null> {
+    try {
+      const response = await axios.post(
+        `${MODRINTH_API}/version_files`,
+        {
+          hashes: [hash],
+          algorithm,
+        },
+        {
+          headers: {
+            'User-Agent': 'minecraft-server-manager/1.0.0',
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      // Response is an object where keys are hashes and values are version objects
+      const versionData = response.data[hash];
+      return versionData || null;
+    } catch (error: any) {
+      // 404 means hash not found, which is expected for manual mods
+      if (error.response?.status === 404) {
+        return null;
+      }
+      console.error('Error looking up version by hash:', error);
+      return null;
+    }
+  }
 }
 
 export default ModrinthService.getInstance();

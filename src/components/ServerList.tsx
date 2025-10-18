@@ -148,7 +148,7 @@ export default function ServerList({ onImportClick }: ServerListProps) {
               variant="outlined"
               size="large"
               startIcon={<UploadIcon />}
-              onClick={onImportClick}
+              onClick={() => onImportClick?.()}
             >
               Import Server
             </Button>

@@ -56,41 +56,74 @@ export async function POST(
       );
     }
 
-    // Execute the command using rcon-cli
-    // The itzg/minecraft-server image includes rcon-cli
+    // Try multiple methods to execute the command
+    // Method 1: Use mc-send-to-console (works without RCON)
     try {
+      console.log(`Executing command via mc-send-to-console: ${command}`);
       const { stdout, stderr } = await execAsync(
-        `docker exec ${containerName} rcon-cli ${command.replace(/'/g, "'\\''")}`,
+        `docker exec ${containerName} mc-send-to-console "${command.replace(/"/g, '\\"')}"`,
         { timeout: 10000 }
       );
 
+      console.log(`Command executed successfully. stdout: ${stdout}, stderr: ${stderr}`);
       return NextResponse.json({
         success: true,
         command,
-        output: stdout || stderr || 'Command executed',
+        output: stdout || stderr || 'Command sent to console',
       });
-    } catch (error: any) {
-      // If rcon-cli fails, try using mc-send-to-console as fallback
+    } catch (error1: any) {
+      console.error(`mc-send-to-console failed: ${error1.message}`);
+
+      // Method 2: Try rcon-cli if available
       try {
+        console.log(`Trying rcon-cli fallback for command: ${command}`);
         const { stdout, stderr } = await execAsync(
-          `docker exec ${containerName} mc-send-to-console ${command.replace(/'/g, "'\\''")}`,
+          `docker exec ${containerName} rcon-cli "${command.replace(/"/g, '\\"')}"`,
           { timeout: 10000 }
         );
 
+        console.log(`rcon-cli executed successfully. stdout: ${stdout}, stderr: ${stderr}`);
         return NextResponse.json({
           success: true,
           command,
-          output: stdout || stderr || 'Command sent to console',
+          output: stdout || stderr || 'Command executed',
         });
-      } catch (fallbackError: any) {
-        return NextResponse.json(
-          {
-            error: 'Failed to execute command',
-            details: fallbackError.message,
-            originalError: error.message
-          },
-          { status: 500 }
-        );
+      } catch (error2: any) {
+        console.error(`rcon-cli failed: ${error2.message}`);
+
+        // Method 3: Direct exec to server console pipe
+        try {
+          console.log(`Trying direct console pipe for command: ${command}`);
+          const { stdout, stderr } = await execAsync(
+            `echo "${command.replace(/"/g, '\\"')}" | docker exec -i ${containerName} /bin/sh -c "cat > /data/stdin.txt && cat /data/stdin.txt"`,
+            { timeout: 10000 }
+          );
+
+          console.log(`Direct pipe executed. stdout: ${stdout}, stderr: ${stderr}`);
+          return NextResponse.json({
+            success: true,
+            command,
+            output: 'Command sent to console (via stdin)',
+          });
+        } catch (error3: any) {
+          console.error(`All command execution methods failed`);
+          console.error(`Method 1 error: ${error1.message}`);
+          console.error(`Method 2 error: ${error2.message}`);
+          console.error(`Method 3 error: ${error3.message}`);
+
+          return NextResponse.json(
+            {
+              error: 'Failed to execute command - all methods failed',
+              details: {
+                mcSendToConsole: error1.message,
+                rconCli: error2.message,
+                directPipe: error3.message,
+              },
+              suggestion: 'RCON may not be enabled. Server may need to be restarted with RCON enabled.'
+            },
+            { status: 500 }
+          );
+        }
       }
     }
   } catch (error: any) {

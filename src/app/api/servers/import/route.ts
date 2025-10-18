@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database/config';
 import { Server, ServerStatus, ModLoader, ModProject, ModVersion, ServerMod } from '@/lib/database/entities';
 import dockerService from '@/lib/services/docker.service';
+import modrinthService from '@/lib/services/modrinth.service';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -9,6 +10,79 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 
 const execAsync = promisify(exec);
+
+/**
+ * Import a mod project from Modrinth with all its versions
+ */
+async function importModFromModrinth(
+  projectId: string,
+  db: any
+): Promise<ModProject> {
+  const modProjectRepository = db.getRepository(ModProject);
+  const modVersionRepository = db.getRepository(ModVersion);
+
+  // Check if project already exists
+  let modProject = await modProjectRepository.findOne({
+    where: { externalId: projectId },
+    relations: ['versions'],
+  });
+
+  if (modProject) {
+    console.log(`Mod project ${modProject.name} already exists in library`);
+    return modProject;
+  }
+
+  // Fetch project details from Modrinth
+  console.log(`Fetching project details from Modrinth: ${projectId}`);
+  const projectData = await modrinthService.getProject(projectId);
+
+  // Fetch all versions for the project (no filters to get all versions)
+  console.log(`Fetching all versions for ${projectData.title}...`);
+  const versions = await modrinthService.getProjectVersions(projectId);
+
+  // Create the mod project
+  modProject = modProjectRepository.create({
+    name: projectData.title,
+    slug: projectData.slug,
+    description: projectData.description,
+    author: projectData.team,
+    projectUrl: `https://modrinth.com/mod/${projectData.slug}`,
+    iconUrl: projectData.icon_url,
+    source: 'modrinth',
+    externalId: projectData.id,
+    autoUpdate: true,
+  });
+
+  modProject = await modProjectRepository.save(modProject);
+  console.log(`Created mod project: ${modProject.name}`);
+
+  // Create mod versions
+  const modVersions: ModVersion[] = [];
+  for (const version of versions) {
+    const primaryFile = version.files.find(f => f.primary) || version.files[0];
+
+    const modVersion = modVersionRepository.create({
+      projectId: modProject.id,
+      fileName: primaryFile.filename,
+      versionNumber: version.version_number,
+      modLoader: version.loaders[0] || 'neoforge',
+      minecraftVersions: version.game_versions,
+      downloadUrl: primaryFile.url,
+      externalId: version.id,
+      fileSize: primaryFile.size,
+      sha1: primaryFile.hashes.sha1,
+      releaseType: version.version_type,
+    });
+
+    modVersions.push(modVersion);
+  }
+
+  await modVersionRepository.save(modVersions);
+  console.log(`Imported ${modVersions.length} versions for ${modProject.name}`);
+
+  modProject.versions = modVersions;
+  return modProject;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -158,44 +232,79 @@ export async function POST(request: NextRequest) {
             });
 
             if (!modVersion) {
-              // Extract mod name from filename (basic heuristic)
-              const modName = fileName
-                .replace(/\.jar$/, '')
-                .replace(/[-_]\d+.*$/, '') // Remove version numbers
-                .replace(/[_-]/g, ' ')
-                .split(' ')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
+              // Try to find this mod on Modrinth by hash
+              console.log(`Looking up mod on Modrinth: ${fileName} (${sha1})`);
+              const modrinthVersion = await modrinthService.getVersionByHash(sha1);
 
-              // Check if project exists by name
-              let modProject = await modProjectRepository.findOne({
-                where: { name: modName },
-              });
+              if (modrinthVersion) {
+                // Found on Modrinth! Import the full project with all versions
+                console.log(`Found on Modrinth: ${fileName} -> ${modrinthVersion.name}`);
 
-              if (!modProject) {
-                // Create new project
-                modProject = modProjectRepository.create({
-                  name: modName,
-                  source: 'manual',
-                  autoUpdate: false,
-                });
-                modProject = await modProjectRepository.save(modProject);
-                console.log(`Created new mod project: ${modName}`);
+                try {
+                  const modProject = await importModFromModrinth(modrinthVersion.project_id, db);
+
+                  // Find the specific version we just imported that matches this file
+                  modVersion = await modVersionRepository.findOne({
+                    where: { sha1 },
+                    relations: ['project'],
+                  });
+
+                  if (modVersion) {
+                    console.log(`Successfully imported from Modrinth: ${modProject.name} (all ${modProject.versions?.length || 0} versions)`);
+                    importedModsCount++;
+                  }
+                } catch (modrinthError) {
+                  console.error(`Error importing from Modrinth for ${fileName}:`, modrinthError);
+                  // Fall through to manual import
+                  modVersion = null;
+                }
               }
 
-              // Create new version
-              modVersion = modVersionRepository.create({
-                projectId: modProject.id,
-                fileName,
-                versionNumber: 'imported',
-                modLoader: metadata.modLoader || 'neoforge',
-                minecraftVersions: [metadata.minecraftVersion],
-                fileSize: fileStats.size,
-                sha1,
-              });
-              modVersion = await modVersionRepository.save(modVersion);
-              console.log(`Imported mod version: ${fileName}`);
-              importedModsCount++;
+              // If not found on Modrinth or Modrinth import failed, fall back to manual import
+              if (!modVersion) {
+                console.log(`Not found on Modrinth, importing manually: ${fileName}`);
+
+                // Extract mod name from filename (basic heuristic)
+                const modName = fileName
+                  .replace(/\.jar$/, '')
+                  .replace(/[-_]\d+.*$/, '') // Remove version numbers
+                  .replace(/[_-]/g, ' ')
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ');
+
+                // Check if project exists by name
+                let modProject = await modProjectRepository.findOne({
+                  where: { name: modName },
+                });
+
+                if (!modProject) {
+                  // Create new project
+                  modProject = modProjectRepository.create({
+                    name: modName,
+                    source: 'manual',
+                    autoUpdate: false,
+                  });
+                  modProject = await modProjectRepository.save(modProject);
+                  console.log(`Created new manual mod project: ${modName}`);
+                }
+
+                // Create new version
+                modVersion = modVersionRepository.create({
+                  projectId: modProject.id,
+                  fileName,
+                  versionNumber: 'imported',
+                  modLoader: metadata.modLoader || 'neoforge',
+                  minecraftVersions: [metadata.minecraftVersion],
+                  fileSize: fileStats.size,
+                  sha1,
+                });
+                modVersion = await modVersionRepository.save(modVersion);
+                console.log(`Imported mod version manually: ${fileName}`);
+                importedModsCount++;
+              }
+            } else {
+              console.log(`Mod already exists in library: ${modVersion.project?.name || fileName}`);
             }
 
             // Link mod to server
