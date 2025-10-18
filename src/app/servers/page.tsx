@@ -36,7 +36,7 @@ export default function ServersPage() {
             </Button>
           </Box>
         </Box>
-        <ServerList />
+        <ServerList onImportClick={() => setImportDialogOpen(true)} />
         <ImportServerDialog
           open={importDialogOpen}
           onClose={() => setImportDialogOpen(false)}

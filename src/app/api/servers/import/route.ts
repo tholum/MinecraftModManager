@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDatabase } from '@/lib/database/config';
-import { Server, ServerStatus, ModLoader } from '@/lib/database/entities';
+import { Server, ServerStatus, ModLoader, ModProject, ModVersion, ServerMod } from '@/lib/database/entities';
 import dockerService from '@/lib/services/docker.service';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
+import crypto from 'crypto';
 
 const execAsync = promisify(exec);
 
@@ -128,6 +129,101 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Scan and import mods to the library
+      const modsDir = path.join(serverDataDir, 'mods');
+      let importedModsCount = 0;
+
+      try {
+        await fs.access(modsDir);
+        const modFiles = await fs.readdir(modsDir);
+        const jarFiles = modFiles.filter(f => f.endsWith('.jar'));
+
+        console.log(`Found ${jarFiles.length} mod files, importing to library...`);
+
+        const modProjectRepository = db.getRepository(ModProject);
+        const modVersionRepository = db.getRepository(ModVersion);
+        const serverModRepository = db.getRepository(ServerMod);
+
+        for (const fileName of jarFiles) {
+          try {
+            const filePath = path.join(modsDir, fileName);
+            const fileStats = await fs.stat(filePath);
+            const fileBuffer = await fs.readFile(filePath);
+            const sha1 = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+
+            // Check if this mod version already exists by SHA1
+            let modVersion = await modVersionRepository.findOne({
+              where: { sha1 },
+              relations: ['project'],
+            });
+
+            if (!modVersion) {
+              // Extract mod name from filename (basic heuristic)
+              const modName = fileName
+                .replace(/\.jar$/, '')
+                .replace(/[-_]\d+.*$/, '') // Remove version numbers
+                .replace(/[_-]/g, ' ')
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+
+              // Check if project exists by name
+              let modProject = await modProjectRepository.findOne({
+                where: { name: modName },
+              });
+
+              if (!modProject) {
+                // Create new project
+                modProject = modProjectRepository.create({
+                  name: modName,
+                  source: 'manual',
+                  autoUpdate: false,
+                });
+                modProject = await modProjectRepository.save(modProject);
+                console.log(`Created new mod project: ${modName}`);
+              }
+
+              // Create new version
+              modVersion = modVersionRepository.create({
+                projectId: modProject.id,
+                fileName,
+                versionNumber: 'imported',
+                modLoader: metadata.modLoader || 'neoforge',
+                minecraftVersions: [metadata.minecraftVersion],
+                fileSize: fileStats.size,
+                sha1,
+              });
+              modVersion = await modVersionRepository.save(modVersion);
+              console.log(`Imported mod version: ${fileName}`);
+              importedModsCount++;
+            }
+
+            // Link mod to server
+            const existingServerMod = await serverModRepository.findOne({
+              where: {
+                serverId: savedServer.id,
+                modVersionId: modVersion.id,
+              },
+            });
+
+            if (!existingServerMod) {
+              const serverMod = serverModRepository.create({
+                serverId: savedServer.id,
+                modVersionId: modVersion.id,
+                enabled: true,
+              });
+              await serverModRepository.save(serverMod);
+            }
+          } catch (modError) {
+            console.error(`Error importing mod ${fileName}:`, modError);
+          }
+        }
+
+        console.log(`Imported ${importedModsCount} new mods to library`);
+      } catch (error) {
+        console.log('No mods folder found or error scanning mods:', error);
+      }
+
       // Create Docker container
       try {
         const containerId = await dockerService.createContainer(savedServer);
@@ -153,7 +249,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         server: savedServer,
-        message: 'Server imported successfully',
+        message: `Server imported successfully. ${importedModsCount > 0 ? `${importedModsCount} new mods added to library.` : ''}`,
+        importedModsCount,
       }, { status: 201 });
     } catch (error: any) {
       // Clean up temp directory on error

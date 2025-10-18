@@ -25,6 +25,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
+  Upload as UploadIcon,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 
@@ -38,7 +39,11 @@ interface Server {
   createdAt: string;
 }
 
-export default function ServerList() {
+interface ServerListProps {
+  onImportClick?: () => void;
+}
+
+export default function ServerList({ onImportClick }: ServerListProps) {
   const router = useRouter();
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,15 +141,25 @@ export default function ServerList() {
             No servers yet
           </Typography>
           <Typography color="textSecondary" sx={{ mb: 4 }}>
-            Create your first Minecraft server to get started
+            Create your first Minecraft server or import an existing one
           </Typography>
-          <Button
-            variant="contained"
-            size="large"
-            onClick={() => router.push('/servers/new')}
-          >
-            Create Server
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<UploadIcon />}
+              onClick={onImportClick}
+            >
+              Import Server
+            </Button>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={() => router.push('/servers/new')}
+            >
+              Create Server
+            </Button>
+          </Box>
         </CardContent>
       </Card>
     );
