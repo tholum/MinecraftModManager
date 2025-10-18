@@ -60,14 +60,32 @@ export async function POST(
       }
     }
 
-    // Create tar.gz archive of the world folder
-    console.log(`Creating world export: ${exportFileName}`);
-    const worldDir = path.join(process.cwd(), 'minecraft-data', `server-${serverId}`);
+    // Create metadata file with server settings
+    const metadata = {
+      serverName: server.name,
+      minecraftVersion: server.minecraftVersion,
+      modLoader: server.modLoader,
+      modLoaderVersion: server.modLoaderVersion,
+      seed: server.seed,
+      settings: server.settings,
+      exportDate: new Date().toISOString(),
+      exportVersion: '1.0',
+    };
+
+    const metadataPath = path.join(process.cwd(), 'minecraft-data', `server-${serverId}`, 'export-metadata.json');
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+
+    // Create tar.gz archive of the entire server data (world, config, mods, etc.)
+    console.log(`Creating full server export: ${exportFileName}`);
+    const serverDataDir = path.join(process.cwd(), 'minecraft-data', `server-${serverId}`);
 
     await execAsync(
-      `tar -czf "${exportPath}" -C "${worldDir}" world`,
+      `tar -czf "${exportPath}" -C "${serverDataDir}" world config mods server.properties export-metadata.json`,
       { timeout: 300000 } // 5 minute timeout
     );
+
+    // Clean up metadata file
+    await fs.unlink(metadataPath).catch(() => {});
 
     // Get file size
     const stats = await fs.stat(exportPath);
