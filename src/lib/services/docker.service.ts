@@ -331,6 +331,10 @@ export class DockerService {
       `online-mode=${settings.onlineMode !== false}`,
       `white-list=${settings.whitelist || false}`,
       `enable-command-block=${settings.enableCommandBlock || false}`,
+      // RCON settings for console management
+      'enable-rcon=true',
+      'rcon.password=minecraft',
+      'rcon.port=25575',
     ];
 
     const propertiesContent = properties.join('\n');
