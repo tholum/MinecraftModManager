@@ -28,6 +28,16 @@ export async function POST(
     await serverRepository.save(server);
 
     try {
+      // Check if container exists, create if it doesn't
+      const container = await dockerService.getContainer(server.id);
+
+      if (!container) {
+        console.log(`Container not found for server ${server.id}, creating new container...`);
+        const containerId = await dockerService.createContainer(server);
+        server.dockerContainerId = containerId;
+        await serverRepository.save(server);
+      }
+
       await dockerService.startContainer(server.id);
 
       // Update status to running
