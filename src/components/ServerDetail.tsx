@@ -19,6 +19,11 @@ import {
   AccordionDetails,
   Tabs,
   Tab,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   PlayArrow as StartIcon,
@@ -46,6 +51,8 @@ interface Server {
   modLoaderVersion?: string;
   port: number;
   seed?: string;
+  memory: string;
+  cpuLimit?: number;
   createdAt: string;
   settings?: {
     difficulty?: string;
@@ -81,6 +88,10 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [tabValue, setTabValue] = useState(0);
+  const [resourceDialogOpen, setResourceDialogOpen] = useState(false);
+  const [editMemory, setEditMemory] = useState('2G');
+  const [editCpuLimit, setEditCpuLimit] = useState<string>('');
+  const [updatingResources, setUpdatingResources] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -201,6 +212,43 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
       setError(error.message);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleOpenResourceDialog = () => {
+    setEditMemory(server?.memory || '2G');
+    setEditCpuLimit(server?.cpuLimit?.toString() || '');
+    setResourceDialogOpen(true);
+  };
+
+  const handleUpdateResources = async () => {
+    try {
+      setUpdatingResources(true);
+      setError(null);
+
+      const response = await fetch(`/api/servers/${serverId}/resources`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memory: editMemory,
+          cpuLimit: editCpuLimit ? parseFloat(editCpuLimit) : null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update resources');
+      }
+
+      setSuccessMessage('Resources updated successfully! You must restart the server for changes to take effect.');
+      setResourceDialogOpen(false);
+      await fetchServer();
+    } catch (error: any) {
+      console.error('Error updating resources:', error);
+      setError(error.message);
+    } finally {
+      setUpdatingResources(false);
     }
   };
 
@@ -609,6 +657,56 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
         </Card>
       </Box>
 
+      {/* Server Resources */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Server Resources
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={handleOpenResourceDialog}
+              disabled={server.status === 'running'}
+            >
+              Edit Resources
+            </Button>
+          </Box>
+          <Divider sx={{ my: 2 }} />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                Memory (RAM)
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 500 }}>
+                {server.memory || '2G'}
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                Allocated to Minecraft server
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="body2" color="textSecondary">
+                CPU Limit
+              </Typography>
+              <Typography variant="h5" sx={{ fontWeight: 500 }}>
+                {server.cpuLimit ? `${server.cpuLimit} cores` : 'Unlimited'}
+              </Typography>
+              <Typography variant="caption" color="textSecondary">
+                Maximum CPU cores to use
+              </Typography>
+            </Box>
+          </Box>
+          {server.status === 'running' && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Stop the server to edit resource limits. Changes require container recreation.
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
       {/* All Settings Accordion */}
       <Accordion sx={{ mb: 3 }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -840,6 +938,48 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Resource Edit Dialog */}
+      <Dialog open={resourceDialogOpen} onClose={() => setResourceDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Server Resources</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            Changing resources requires stopping and recreating the container. Server must be stopped to apply changes.
+          </Alert>
+
+          <TextField
+            label="Memory (RAM)"
+            fullWidth
+            value={editMemory}
+            onChange={(e) => setEditMemory(e.target.value)}
+            helperText="Examples: 2G, 4G, 8G, 10G (G = Gigabytes, M = Megabytes)"
+            sx={{ mb: 3 }}
+          />
+
+          <TextField
+            label="CPU Limit (optional)"
+            fullWidth
+            type="number"
+            value={editCpuLimit}
+            onChange={(e) => setEditCpuLimit(e.target.value)}
+            helperText="Number of CPU cores to limit (e.g., 2, 4). Leave empty for unlimited."
+            inputProps={{ min: 0.5, max: 16, step: 0.5 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setResourceDialogOpen(false)} disabled={updatingResources}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUpdateResources}
+            variant="contained"
+            disabled={updatingResources}
+            startIcon={updatingResources ? <CircularProgress size={20} /> : null}
+          >
+            {updatingResources ? 'Updating...' : 'Update Resources'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

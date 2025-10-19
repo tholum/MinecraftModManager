@@ -71,6 +71,12 @@ export class Server {
   @Column({ type: 'varchar', length: 255, nullable: true })
   seed?: string;
 
+  @Column({ type: 'varchar', length: 10, default: '2G' })
+  memory!: string;
+
+  @Column({ type: 'float', nullable: true })
+  cpuLimit?: number;
+
   @Column({ type: 'json', nullable: true })
   settings?: ServerSettings;
 

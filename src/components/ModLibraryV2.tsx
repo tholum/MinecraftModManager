@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -65,6 +65,212 @@ interface ModrinthSearchResult {
   categories: string[];
 }
 
+// Memoized ProjectCard component to prevent unnecessary re-renders
+const ProjectCard = React.memo(({
+  project,
+  isExpanded,
+  onToggleExpand,
+  onDelete,
+  deleteLoading
+}: {
+  project: ModProject;
+  isExpanded: boolean;
+  onToggleExpand: (id: number) => void;
+  onDelete: (id: number, name: string) => void;
+  deleteLoading: boolean;
+}) => {
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* Mod Icon */}
+          {project.iconUrl && (
+            <img
+              src={project.iconUrl}
+              alt={project.name}
+              style={{ width: 64, height: 64, borderRadius: 8 }}
+            />
+          )}
+
+          {/* Mod Info */}
+          <Box sx={{ flex: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                {project.name}
+              </Typography>
+              {project.source === 'modrinth' && (
+                <Chip label="Modrinth" size="small" color="primary" />
+              )}
+            </Box>
+
+            {project.author && (
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                by {project.author}
+              </Typography>
+            )}
+
+            {project.description && (
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {project.description.length > 150
+                  ? `${project.description.substring(0, 150)}...`
+                  : project.description}
+              </Typography>
+            )}
+
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Chip
+                label={`${project.versions?.length || 0} versions`}
+                size="small"
+                variant="outlined"
+              />
+              {project.autoUpdate && (
+                <Chip label="Auto-update" size="small" color="success" variant="outlined" />
+              )}
+            </Box>
+          </Box>
+
+          {/* Actions */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <IconButton
+              size="small"
+              onClick={() => onToggleExpand(project.id)}
+              title="Show versions"
+            >
+              {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+            <IconButton
+              size="small"
+              color="error"
+              onClick={() => onDelete(project.id, project.name)}
+              disabled={deleteLoading}
+              title="Remove from library"
+            >
+              {deleteLoading ? (
+                <CircularProgress size={20} />
+              ) : (
+                <DeleteIcon fontSize="small" />
+              )}
+            </IconButton>
+          </Box>
+        </Box>
+
+        {/* Expanded Versions */}
+        <Collapse in={isExpanded}>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+            Available Versions
+          </Typography>
+          <Box sx={{ display: 'grid', gap: 1 }}>
+            {project.versions && project.versions.length > 0 ? (
+              project.versions.map((version) => (
+                <Box
+                  key={version.id}
+                  sx={{
+                    p: 1.5,
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {version.versionNumber}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        {version.fileName}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Chip
+                        label={version.modLoader}
+                        size="small"
+                        sx={{ textTransform: 'capitalize' }}
+                      />
+                      {version.minecraftVersions.slice(0, 3).map((mcVer, idx) => (
+                        <Chip key={idx} label={mcVer} size="small" variant="outlined" />
+                      ))}
+                      {version.minecraftVersions.length > 3 && (
+                        <Chip
+                          label={`+${version.minecraftVersions.length - 3}`}
+                          size="small"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              ))
+            ) : (
+              <Typography variant="body2" color="textSecondary">
+                No versions available
+              </Typography>
+            )}
+          </Box>
+        </Collapse>
+      </CardContent>
+    </Card>
+  );
+});
+
+ProjectCard.displayName = 'ProjectCard';
+
+// Memoized SearchResultCard component to prevent unnecessary re-renders
+const SearchResultCard = React.memo(({
+  mod,
+  onAdd,
+  isAdding
+}: {
+  mod: ModrinthSearchResult;
+  onAdd: (mod: ModrinthSearchResult) => void;
+  isAdding: boolean;
+}) => {
+  const handleClick = useCallback(() => {
+    onAdd(mod);
+  }, [mod, onAdd]);
+
+  return (
+    <Card
+      sx={{ mb: 1, cursor: 'pointer' }}
+      onClick={handleClick}
+    >
+      <CardContent>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          {mod.icon_url && (
+            <img
+              src={mod.icon_url}
+              alt={mod.title}
+              style={{ width: 48, height: 48, borderRadius: 4 }}
+            />
+          )}
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              {mod.title}
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mb: 0.5 }}>
+              by {mod.author}
+            </Typography>
+            <Typography variant="body2" noWrap>
+              {mod.description}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 1 }}>
+              <Chip label={`${mod.downloads.toLocaleString()} downloads`} size="small" />
+            </Box>
+          </Box>
+          {isAdding ? (
+            <CircularProgress size={24} />
+          ) : (
+            <AddIcon color="primary" />
+          )}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+});
+
+SearchResultCard.displayName = 'SearchResultCard';
+
 export default function ModLibraryV2() {
   const [projects, setProjects] = useState<ModProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,11 +288,7 @@ export default function ModLibraryV2() {
   const [filterMinecraftVersion, setFilterMinecraftVersion] = useState('');
   const [filterModLoader, setFilterModLoader] = useState('');
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/mod-projects');
@@ -97,9 +299,13 @@ export default function ModLibraryV2() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleSearch = async () => {
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
 
     try {
@@ -125,9 +331,9 @@ export default function ModLibraryV2() {
     } finally {
       setSearchLoading(false);
     }
-  };
+  }, [searchQuery, filterMinecraftVersion, filterModLoader]);
 
-  const handleAddModFromModrinth = async (mod: ModrinthSearchResult) => {
+  const handleAddModFromModrinth = useCallback(async (mod: ModrinthSearchResult) => {
     try {
       setAddingModId(mod.project_id);
       setError(null);
@@ -162,9 +368,9 @@ export default function ModLibraryV2() {
     } finally {
       setAddingModId(null);
     }
-  };
+  }, [filterMinecraftVersion, filterModLoader, fetchProjects]);
 
-  const handleDeleteProject = async (projectId: number, projectName: string) => {
+  const handleDeleteProject = useCallback(async (projectId: number, projectName: string) => {
     if (!confirm(`Remove "${projectName}" and all its versions from your library?`)) {
       return;
     }
@@ -185,24 +391,57 @@ export default function ModLibraryV2() {
     } finally {
       setDeleteLoading(null);
     }
-  };
+  }, [fetchProjects]);
 
-  const toggleExpand = (projectId: number) => {
-    const newExpanded = new Set(expandedProjects);
-    if (newExpanded.has(projectId)) {
-      newExpanded.delete(projectId);
-    } else {
-      newExpanded.add(projectId);
-    }
-    setExpandedProjects(newExpanded);
-  };
+  const toggleExpand = useCallback((projectId: number) => {
+    setExpandedProjects(prev => {
+      const newExpanded = new Set(prev);
+      if (newExpanded.has(projectId)) {
+        newExpanded.delete(projectId);
+      } else {
+        newExpanded.add(projectId);
+      }
+      return newExpanded;
+    });
+  }, []);
 
-  const handleDialogClose = () => {
+  const handleDialogClose = useCallback(() => {
     setSearchDialogOpen(false);
     setSearchQuery('');
     setSearchResults([]);
     setError(null);
-  };
+  }, []);
+
+  // Memoized handlers for text field changes
+  const handleSearchQueryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  const handleMinecraftVersionChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterMinecraftVersion(e.target.value);
+  }, []);
+
+  const handleModLoaderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilterModLoader(e.target.value);
+  }, []);
+
+  const handleSearchKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  }, [handleSearch]);
+
+  const toggleShowAdvanced = useCallback(() => {
+    setShowAdvanced(prev => !prev);
+  }, []);
+
+  const handleOpenDialog = useCallback(() => {
+    setSearchDialogOpen(true);
+  }, []);
+
+  const handleClearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   if (loading) {
     return (
@@ -222,7 +461,7 @@ export default function ModLibraryV2() {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setSearchDialogOpen(true)}
+          onClick={handleOpenDialog}
           size="large"
         >
           Add Mod
@@ -243,7 +482,7 @@ export default function ModLibraryV2() {
               variant="contained"
               size="large"
               startIcon={<SearchIcon />}
-              onClick={() => setSearchDialogOpen(true)}
+              onClick={handleOpenDialog}
             >
               Search Modrinth
             </Button>
@@ -253,137 +492,14 @@ export default function ModLibraryV2() {
         /* Mod Projects List */
         <Box sx={{ display: 'grid', gap: 2 }}>
           {projects.map((project) => (
-            <Card key={project.id}>
-              <CardContent>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  {/* Mod Icon */}
-                  {project.iconUrl && (
-                    <img
-                      src={project.iconUrl}
-                      alt={project.name}
-                      style={{ width: 64, height: 64, borderRadius: 8 }}
-                    />
-                  )}
-
-                  {/* Mod Info */}
-                  <Box sx={{ flex: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                        {project.name}
-                      </Typography>
-                      {project.source === 'modrinth' && (
-                        <Chip label="Modrinth" size="small" color="primary" />
-                      )}
-                    </Box>
-
-                    {project.author && (
-                      <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
-                        by {project.author}
-                      </Typography>
-                    )}
-
-                    {project.description && (
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        {project.description.length > 150
-                          ? `${project.description.substring(0, 150)}...`
-                          : project.description}
-                      </Typography>
-                    )}
-
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                      <Chip
-                        label={`${project.versions?.length || 0} versions`}
-                        size="small"
-                        variant="outlined"
-                      />
-                      {project.autoUpdate && (
-                        <Chip label="Auto-update" size="small" color="success" variant="outlined" />
-                      )}
-                    </Box>
-                  </Box>
-
-                  {/* Actions */}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <IconButton
-                      size="small"
-                      onClick={() => toggleExpand(project.id)}
-                      title="Show versions"
-                    >
-                      {expandedProjects.has(project.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteProject(project.id, project.name)}
-                      disabled={deleteLoading === project.id}
-                      title="Remove from library"
-                    >
-                      {deleteLoading === project.id ? (
-                        <CircularProgress size={20} />
-                      ) : (
-                        <DeleteIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                  </Box>
-                </Box>
-
-                {/* Expanded Versions */}
-                <Collapse in={expandedProjects.has(project.id)}>
-                  <Divider sx={{ my: 2 }} />
-                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                    Available Versions
-                  </Typography>
-                  <Box sx={{ display: 'grid', gap: 1 }}>
-                    {project.versions && project.versions.length > 0 ? (
-                      project.versions.map((version) => (
-                        <Box
-                          key={version.id}
-                          sx={{
-                            p: 1.5,
-                            border: 1,
-                            borderColor: 'divider',
-                            borderRadius: 1,
-                            bgcolor: 'background.paper',
-                          }}
-                        >
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Box>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                {version.versionNumber}
-                              </Typography>
-                              <Typography variant="caption" color="textSecondary">
-                                {version.fileName}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                              <Chip
-                                label={version.modLoader}
-                                size="small"
-                                sx={{ textTransform: 'capitalize' }}
-                              />
-                              {version.minecraftVersions.slice(0, 3).map((mcVer, idx) => (
-                                <Chip key={idx} label={mcVer} size="small" variant="outlined" />
-                              ))}
-                              {version.minecraftVersions.length > 3 && (
-                                <Chip
-                                  label={`+${version.minecraftVersions.length - 3}`}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              )}
-                            </Box>
-                          </Box>
-                        </Box>
-                      ))
-                    ) : (
-                      <Typography variant="body2" color="textSecondary">
-                        No versions available
-                      </Typography>
-                    )}
-                  </Box>
-                </Collapse>
-              </CardContent>
-            </Card>
+            <ProjectCard
+              key={project.id}
+              project={project}
+              isExpanded={expandedProjects.has(project.id)}
+              onToggleExpand={toggleExpand}
+              onDelete={handleDeleteProject}
+              deleteLoading={deleteLoading === project.id}
+            />
           ))}
         </Box>
       )}
@@ -393,7 +509,7 @@ export default function ModLibraryV2() {
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             Search Modrinth
-            <IconButton size="small" onClick={() => setShowAdvanced(!showAdvanced)}>
+            <IconButton size="small" onClick={toggleShowAdvanced}>
               <Badge color="primary" variant="dot" invisible={!filterMinecraftVersion && !filterModLoader}>
                 <TuneIcon />
               </Badge>
@@ -402,7 +518,7 @@ export default function ModLibraryV2() {
         </DialogTitle>
         <DialogContent>
           {error && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            <Alert severity="error" sx={{ mb: 2 }} onClose={handleClearError}>
               {error}
             </Alert>
           )}
@@ -412,8 +528,8 @@ export default function ModLibraryV2() {
             <TextField
               label="Search mods"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              onChange={handleSearchQueryChange}
+              onKeyPress={handleSearchKeyPress}
               fullWidth
               placeholder="e.g., Fabric API, Sodium, JEI..."
             />
@@ -433,14 +549,14 @@ export default function ModLibraryV2() {
               <TextField
                 label="Minecraft Version (optional)"
                 value={filterMinecraftVersion}
-                onChange={(e) => setFilterMinecraftVersion(e.target.value)}
+                onChange={handleMinecraftVersionChange}
                 placeholder="e.g., 1.21.1"
                 size="small"
               />
               <TextField
                 label="Mod Loader (optional)"
                 value={filterModLoader}
-                onChange={(e) => setFilterModLoader(e.target.value)}
+                onChange={handleModLoaderChange}
                 placeholder="fabric or neoforge"
                 size="small"
               />
@@ -457,42 +573,12 @@ export default function ModLibraryV2() {
           {!searchLoading && searchResults.length > 0 && (
             <Box sx={{ maxHeight: '400px', overflow: 'auto' }}>
               {searchResults.map((mod) => (
-                <Card
+                <SearchResultCard
                   key={mod.project_id}
-                  sx={{ mb: 1, cursor: 'pointer' }}
-                  onClick={() => handleAddModFromModrinth(mod)}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                      {mod.icon_url && (
-                        <img
-                          src={mod.icon_url}
-                          alt={mod.title}
-                          style={{ width: 48, height: 48, borderRadius: 4 }}
-                        />
-                      )}
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                          {mod.title}
-                        </Typography>
-                        <Typography variant="body2" color="textSecondary" sx={{ mb: 0.5 }}>
-                          by {mod.author}
-                        </Typography>
-                        <Typography variant="body2" noWrap>
-                          {mod.description}
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 0.5, mt: 1 }}>
-                          <Chip label={`${mod.downloads.toLocaleString()} downloads`} size="small" />
-                        </Box>
-                      </Box>
-                      {addingModId === mod.project_id ? (
-                        <CircularProgress size={24} />
-                      ) : (
-                        <AddIcon color="primary" />
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
+                  mod={mod}
+                  onAdd={handleAddModFromModrinth}
+                  isAdding={addingModId === mod.project_id}
+                />
               ))}
             </Box>
           )}

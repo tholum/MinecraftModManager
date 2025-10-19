@@ -63,6 +63,10 @@ export class DockerService {
     // Pull the image if it doesn't exist locally
     await this.pullImage(image);
 
+    // Get memory setting (default to 2G if not set)
+    const memory = server.memory || '2G';
+    const memoryBytes = this.parseMemoryToBytes(memory);
+
     // Create container configuration
     const containerConfig: Docker.ContainerCreateOptions = {
       name: containerName,
@@ -74,7 +78,7 @@ export class DockerService {
         server.modLoaderVersion ? `FORGEVERSION=${server.modLoaderVersion}` : '',
         server.modLoaderVersion ? `FABRIC_VERSION=${server.modLoaderVersion}` : '',
         server.seed ? `SEED=${server.seed}` : '',
-        'MEMORY=2G',
+        `MEMORY=${memory}`,
         'OVERRIDE_SERVER_PROPERTIES=false',
         'ENABLE_RCON=true',
         'RCON_PASSWORD=minecraft',
@@ -95,6 +99,9 @@ export class DockerService {
         RestartPolicy: {
           Name: 'unless-stopped',
         },
+        Memory: memoryBytes, // Docker memory limit (hard limit)
+        MemoryReservation: Math.floor(memoryBytes * 0.8), // Soft limit (80% of hard limit)
+        ...(server.cpuLimit && { NanoCpus: server.cpuLimit * 1e9 }), // CPU limit in nano CPUs
       },
     };
 
@@ -279,6 +286,27 @@ export class DockerService {
       default:
         return 'VANILLA';
     }
+  }
+
+  private parseMemoryToBytes(memory: string): number {
+    // Parse memory string like "2G", "4096M", "512M" to bytes
+    const match = memory.match(/^(\d+(?:\.\d+)?)\s*([KMGT]?)$/i);
+    if (!match) {
+      console.warn(`Invalid memory format: ${memory}, defaulting to 2GB`);
+      return 2 * 1024 * 1024 * 1024; // 2GB default
+    }
+
+    const value = parseFloat(match[1]);
+    const unit = (match[2] || 'M').toUpperCase();
+
+    const multipliers: { [key: string]: number } = {
+      'K': 1024,
+      'M': 1024 * 1024,
+      'G': 1024 * 1024 * 1024,
+      'T': 1024 * 1024 * 1024 * 1024,
+    };
+
+    return Math.floor(value * (multipliers[unit] || multipliers['M']));
   }
 
   private async generateServerProperties(server: Server, volumePath: string): Promise<void> {
