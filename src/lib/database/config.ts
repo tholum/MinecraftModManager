@@ -5,6 +5,7 @@ import { Mod } from './entities/Mod';
 import { ModProject } from './entities/ModProject';
 import { ModVersion } from './entities/ModVersion';
 import { ServerMod } from './entities/ServerMod';
+import { RecipeDatapack } from './entities/RecipeDatapack';
 import path from 'path';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -12,7 +13,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 export const dataSourceOptions: DataSourceOptions = {
   type: 'better-sqlite3',
   database: path.join(process.cwd(), 'data', 'minecraft-manager.db'),
-  entities: [Server, Mod, ModProject, ModVersion, ServerMod],
+  entities: [Server, Mod, ModProject, ModVersion, ServerMod, RecipeDatapack],
   synchronize: isDevelopment, // Auto-sync schema in development
   logging: isDevelopment,
 };

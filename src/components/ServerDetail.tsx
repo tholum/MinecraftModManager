@@ -41,6 +41,7 @@ import {
 import { useRouter } from 'next/navigation';
 import ServerModsV2 from './ServerModsV2';
 import ServerConsole from './ServerConsole';
+import { RecipeManager } from '@/components/recipes';
 
 interface Server {
   id: number;
@@ -459,6 +460,7 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
           <Tab label="Overview" />
           <Tab label="Mods" />
+          <Tab label="Recipes" />
           {server.status === 'running' && <Tab label="Console" />}
           <Tab label="Logs" />
           <Tab label="Settings" />
@@ -792,13 +794,18 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
         />
       )}
 
+      {/* Tab Panel: Recipes */}
+      {tabValue === 2 && (
+        <RecipeManager serverId={serverId} />
+      )}
+
       {/* Tab Panel: Console (only when server is running) */}
-      {server.status === 'running' && tabValue === 2 && (
+      {server.status === 'running' && tabValue === 3 && (
         <ServerConsole serverId={serverId} />
       )}
 
       {/* Tab Panel: Logs */}
-      {tabValue === (server.status === 'running' ? 3 : 2) && (
+      {tabValue === (server.status === 'running' ? 4 : 3) && (
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -828,7 +835,7 @@ export default function ServerDetail({ serverId }: ServerDetailProps) {
       )}
 
       {/* Tab Panel: Settings */}
-      {tabValue === (server.status === 'running' ? 4 : 3) && (
+      {tabValue === (server.status === 'running' ? 5 : 4) && (
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>

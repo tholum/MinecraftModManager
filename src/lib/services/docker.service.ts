@@ -90,8 +90,8 @@ export class DockerService {
       },
       HostConfig: {
         PortBindings: {
-          '25565/tcp': [{ HostPort: server.port.toString() }],
-          '25575/tcp': [{ HostPort: '25575' }],
+          '25565/tcp': [{ HostIp: '0.0.0.0', HostPort: server.port.toString() }],
+          '25575/tcp': [{ HostIp: '0.0.0.0', HostPort: '25575' }],
         },
         Binds: [
           `${volumePath}:/data`,
@@ -379,6 +379,63 @@ export class DockerService {
     } catch (error) {
       console.error('Error syncing mods folder:', error);
       throw new Error(`Failed to sync mods folder: ${error}`);
+    }
+  }
+
+  async executeRconCommand(serverId: number, command: string): Promise<{ success: boolean; output?: string; error?: string }> {
+    const container = await this.getContainer(serverId);
+    if (!container) {
+      return {
+        success: false,
+        error: 'Container not found',
+      };
+    }
+
+    try {
+      const info = await container.inspect();
+      if (!info.State.Running) {
+        return {
+          success: false,
+          error: 'Server is not running',
+        };
+      }
+
+      // Execute rcon-cli command inside the container
+      const exec = await container.exec({
+        Cmd: ['rcon-cli', command],
+        AttachStdout: true,
+        AttachStderr: true,
+      });
+
+      const stream = await exec.start({ Detach: false });
+
+      // Collect output
+      let output = '';
+      return new Promise((resolve) => {
+        stream.on('data', (chunk: Buffer) => {
+          output += chunk.toString('utf8');
+        });
+
+        stream.on('end', () => {
+          resolve({
+            success: true,
+            output: output || 'Command executed successfully',
+          });
+        });
+
+        stream.on('error', (error: Error) => {
+          resolve({
+            success: false,
+            error: `Failed to execute command: ${error.message}`,
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error('Error executing RCON command:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to execute RCON command',
+      };
     }
   }
 

@@ -4,3 +4,4 @@ export { Mod } from './Mod';
 export { ModProject } from './ModProject';
 export { ModVersion } from './ModVersion';
 export { ServerMod } from './ServerMod';
+export { RecipeDatapack, RecipeType } from './RecipeDatapack';

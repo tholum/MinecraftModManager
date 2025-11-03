@@ -85,6 +85,11 @@ export class Server {
   })
   serverMods?: any[];
 
+  @OneToMany('RecipeDatapack', (recipeDatapack: any) => recipeDatapack.server, {
+    cascade: true,
+  })
+  recipeDatapacks?: any[];
+
   @CreateDateColumn()
   createdAt!: Date;
 
